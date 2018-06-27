@@ -24,8 +24,10 @@
 #include <jsonrpccpp/common/errors.h>
 #include <jsonrpccpp/common/exception.h>
 #include <libdevcore/CommonJS.h>
+#include <libethereum/BlockQueue.h>
 #include <libethereum/ChainParams.h>
 #include <libethereum/ClientTest.h>
+#include <thread>
 
 using namespace std;
 using namespace dev;
@@ -45,22 +47,43 @@ string logEntriesToLogHash(eth::LogEntries const& _logs)
         l.streamRLP(s);
     return toJS(sha3(s.out()));
 }
+
+h256 stringToHash(string const& _hashString)
+{
+    try
+    {
+        return h256(_hashString);
+    }
+    catch (BadHexCharacter const&)
+    {
+        throw JsonRpcException(Errors::ERROR_RPC_INVALID_PARAMS);
+    }
+}
+
+string queueStatusToString(QueueStatus const& _status)
+{
+    switch (_status)
+    {
+    case QueueStatus::Bad:
+        return "Bad";
+    case QueueStatus::Importing:
+        return "Importing";
+    case QueueStatus::Ready:
+        return "Ready";
+    case QueueStatus::Unknown:
+        return "Unknown";
+    case QueueStatus::UnknownParent:
+        return "UnknownParent";
+    }
+    return "Undefined";
+}
 }
 
 string Test::test_getLogHash(string const& _txHash)
 {
     try
     {
-        h256 txHash;
-        try
-        {
-            txHash = h256(_txHash);
-        }
-        catch (BadHexCharacter const&)
-        {
-            throw JsonRpcException(Errors::ERROR_RPC_INVALID_PARAMS);
-        }
-
+        h256 txHash = stringToHash(_txHash);
         if (m_eth.blockChain().isKnownTransaction(txHash))
         {
             LocalisedTransaction t = m_eth.localisedTransaction(txHash);
@@ -85,14 +108,13 @@ bool Test::test_setChainParams(Json::Value const& param1)
         std::string output = fastWriter.write(param1);
         asClientTest(m_eth).setChainParams(output);
         asClientTest(m_eth).completeSync();  // set sync state to idle for mining
+        return true;
     }
     catch (std::exception const& ex)
     {
         cwarn << ex.what();
         throw JsonRpcException(Errors::ERROR_RPC_INTERNAL_ERROR, ex.what());
     }
-
-    return true;
 }
 
 bool Test::test_mineBlocks(int _number)
@@ -148,4 +170,35 @@ std::string Test::test_importRawBlock(string const& _blockRLP)
     {
         BOOST_THROW_EXCEPTION(JsonRpcException(Errors::ERROR_RPC_INTERNAL_ERROR, ex.what()));
     }
+}
+
+std::string Test::test_getBlockStatus(std::string const& _blockHash)
+{
+    QueueStatus status;
+    ClientTest& client = asClientTest(m_eth);
+    if (_blockHash.empty())
+    {
+        switch (client.getLastBlockStatus())
+        {
+        case ClientTest::BlockStatus::Idle:
+            status = QueueStatus::Ready;
+            break;
+        case ClientTest::BlockStatus::Mining:
+            status = QueueStatus::Importing;
+            break;
+        case ClientTest::BlockStatus::Error:
+            status = QueueStatus::Bad;
+            break;
+        case ClientTest::BlockStatus::Success:
+            status = QueueStatus::Ready;
+            break;
+        default:
+            status = QueueStatus::Unknown;
+            break;
+        }
+    }
+    else
+        status = client.blockQueue().blockStatus(stringToHash(_blockHash));
+
+    return queueStatusToString(status);
 }
