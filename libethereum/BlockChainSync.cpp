@@ -262,7 +262,11 @@ void BlockChainSync::syncPeer(std::shared_ptr<EthereumPeer> _peer, bool _force)
     if (_force || _peer->m_totalDifficulty > syncingDifficulty)
     {
         if (_peer->m_totalDifficulty > syncingDifficulty)
+        {
             LOG(m_logger) << "Discovered new highest difficulty";
+            LOG(m_logger) << "Peer genesis " << _peer->m_genesisHash;
+            LOG(m_logger) << "Host genesis " << host().chain().genesisHash();
+        }
 
         // start sync
         m_syncingTotalDifficulty = _peer->m_totalDifficulty;
