@@ -211,22 +211,31 @@ void BlockChainSync::onPeerStatus(std::shared_ptr<EthereumPeer> _peer)
         return; // Expired
     if (_peer->m_genesisHash != host().chain().genesisHash())
         _peer->disable("Invalid genesis hash");
-    else if (_peer->m_protocolVersion != host().protocolVersion() && _peer->m_protocolVersion != EthereumHost::c_oldProtocolVersion)
-        _peer->disable("Invalid protocol version.");
-    else if (_peer->m_networkId != host().networkId())
-        _peer->disable("Invalid network identifier.");
-    else if (session->info().clientVersion.find("/v0.7.0/") != string::npos)
-        _peer->disable("Blacklisted client version.");
-    else if (host().isBanned(session->id()))
-        _peer->disable("Peer banned for previous bad behaviour.");
-    else if (_peer->m_asking != Asking::State && _peer->m_asking != Asking::Nothing)
-        _peer->disable("Peer banned for unexpected status message.");
     else
     {
-        // Before starting to exchange the data with the node, let's verify that it's on our chain
-        if (!requestDaoForkBlockHeader(_peer))
-            // DAO challenge not needed
-            syncPeer(_peer, false);
+        LOG(m_logger) << "status Peer genesis " << _peer->m_genesisHash;
+        LOG(m_logger) << "status Host genesis " << host().chain().genesisHash();
+        LOG(m_logger) << "equality " << (_peer->m_genesisHash == host().chain().genesisHash());
+        if (_peer->m_protocolVersion != host().protocolVersion() && _peer->m_protocolVersion != EthereumHost::c_oldProtocolVersion)
+            _peer->disable("Invalid protocol version.");
+        else if (_peer->m_networkId != host().networkId())
+            _peer->disable("Invalid network identifier.");
+        else if (session->info().clientVersion.find("/v0.7.0/") != string::npos)
+            _peer->disable("Blacklisted client version.");
+        else if (host().isBanned(session->id()))
+            _peer->disable("Peer banned for previous bad behaviour.");
+        else if (_peer->m_asking != Asking::State && _peer->m_asking != Asking::Nothing)
+            _peer->disable("Peer banned for unexpected status message.");
+        else
+        {
+            // Before starting to exchange the data with the node, let's verify that it's on our chain
+            if (!requestDaoForkBlockHeader(_peer))
+            {
+                // DAO challenge not needed
+                LOG(m_logger) << "status - sync peer";
+                syncPeer(_peer, false);
+            }
+        }
     }
 }
 
@@ -291,6 +300,7 @@ void BlockChainSync::continueSync()
 {
     host().foreachPeer([this](std::shared_ptr<EthereumPeer> _p)
     {
+        LOG(m_logger) << "continue sync - sync peer";
         syncPeer(_p, false);
         return true;
     });
@@ -461,7 +471,10 @@ void BlockChainSync::onPeerBlockHeaders(std::shared_ptr<EthereumPeer> _peer, RLP
     if (m_daoChallengedPeers.find(_peer) != m_daoChallengedPeers.end())
     {
         if (verifyDaoChallengeResponse(_r))
+        {
+            LOG(m_logger) << "headers - sync peer";
             syncPeer(_peer, false);
+        }
         else
             _peer->disable("Peer from another fork.");
 
@@ -769,6 +782,7 @@ void BlockChainSync::onPeerNewBlock(std::shared_ptr<EthereumPeer> _peer, RLP con
         // Update the hash of highest known block of the peer.
         // syncPeer will then request the highest block header to properly restart syncing
         _peer->m_latestHash = h;
+        LOG(m_logger) << "new block - sync peer";
         syncPeer(_peer, true);
         return;
     }
@@ -825,7 +839,7 @@ void BlockChainSync::onPeerNewBlock(std::shared_ptr<EthereumPeer> _peer, RLP con
         u256 totalDifficulty = _r[1].toInt<u256>();
         if (totalDifficulty > _peer->m_totalDifficulty)
         {
-            LOG(m_loggerDetail) << "Received block with no known parent. Peer needs syncing...";
+            LOG(m_logger) << "Received block with no known parent. Peer needs syncing...";
             syncPeer(_peer, true);
         }
         break;
@@ -930,7 +944,7 @@ void BlockChainSync::onPeerNewHashes(std::shared_ptr<EthereumPeer> _peer, std::v
     LOG(m_logger) << knowns << " knowns, " << unknowns << " unknowns";
     if (unknowns > 0)
     {
-        LOG(m_loggerDetail) << "Not syncing and new block hash discovered: syncing.";
+        LOG(m_logger) << "Not syncing and new block hash discovered: syncing.";
         syncPeer(_peer, true);
     }
 }

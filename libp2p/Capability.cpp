@@ -31,13 +31,13 @@ using namespace dev::p2p;
 Capability::Capability(std::shared_ptr<SessionFace> _s, HostCapabilityFace* _h, unsigned _idOffset):
     m_session(_s), m_hostCap(_h), m_idOffset(_idOffset)
 {
-    cnetdetails << "New session for capability " << m_hostCap->name()
+    clog(VerbosityDebug, "cap") << "New session for capability " << m_hostCap->name()
                 << "; idOffset: " << m_idOffset;
 }
 
 void Capability::disable(std::string const& _problem)
 {
-    cnetdetails << "DISABLE: Disabling capability '" << m_hostCap->name()
+    clog(VerbosityDebug, "cap") << "DISABLE: Disabling capability '" << m_hostCap->name()
                 << "'. Reason: " << _problem;
     m_enabled = false;
 }
